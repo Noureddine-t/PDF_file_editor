@@ -3,6 +3,14 @@ from tkinter import ttk, filedialog, messagebox
 from pypdf import PdfReader, PdfWriter
 
 
+# --- Helper Function ---
+def ensure_pdf_extension(filename):
+    if not filename.lower().endswith('.pdf'):
+        return filename + '.pdf'
+    return filename
+
+
+# --- Backend Functions ---
 def merge_pdfs(pdf_list, output):
     writer = PdfWriter()
     for pdf in pdf_list:
@@ -164,7 +172,7 @@ class PDFEditorApp:
     # --- Action Methods ---
     def merge_action(self):
         files_str = self.merge_files_entry.get()
-        output = self.merge_output_entry.get()
+        output = ensure_pdf_extension(self.merge_output_entry.get())
         if not files_str or not output:
             messagebox.showerror("Error", "Please specify input files and output file.")
             return
@@ -177,7 +185,7 @@ class PDFEditorApp:
 
     def delete_action(self):
         pdf_file = self.delete_file_entry.get()
-        output = self.delete_output_entry.get()
+        output = ensure_pdf_extension(self.delete_output_entry.get())
         pages_str = self.delete_pages_entry.get()
         if not pdf_file or not output or not pages_str:
             messagebox.showerror("Error", "Please specify all fields.")
@@ -192,7 +200,7 @@ class PDFEditorApp:
     def add_action(self):
         original = self.add_original_entry.get()
         add_file = self.add_page_entry.get()
-        output = self.add_output_entry.get()
+        output = ensure_pdf_extension(self.add_output_entry.get())
         pos_str = self.add_position_entry.get()
         if not original or not add_file or not output or not pos_str:
             messagebox.showerror("Error", "Please specify all fields.")
