@@ -67,17 +67,16 @@ class DragDropReorder(tk.Toplevel):
     def __init__(self, parent, pdf_file, save_callback):
         tk.Toplevel.__init__(self, parent)
         self.title("Reorder Pages")
-        self.geometry("320x500")
+        self.geometry("420x650")  # increased window size
         self.save_callback = save_callback
         self.pdf_file = pdf_file
-        self.thumbs = []      # to keep PhotoImage references
-        self.page_order = []  # original page indices
-        self.items = []       # list of canvas image item IDs
-        self.thumb_height = 200  # increased thumbnail height
+        self.thumbs = []         # keep PhotoImage references
+        self.page_order = []     # original page indices
+        self.items = []          # list of tuples: (canvas item, width, height)
         self.margin = 10
-        self.canvas_width = 300  # fixed canvas width
+        self.canvas_width = 400  # fixed canvas width
 
-        # Create canvas with scrollbar and fixed width
+        # Create canvas with vertical scrollbar and fixed width
         self.canvas = tk.Canvas(self, width=self.canvas_width, bg="white")
         vsb = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=vsb.set)
@@ -91,8 +90,22 @@ class DragDropReorder(tk.Toplevel):
         self.canvas.bind("<B1-Motion>", self.on_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_drop)
 
+        # Bind mouse wheel for scrolling:
+        # Windows and macOS:
+        self.canvas.bind("<MouseWheel>", self._on_mousewheel)
+        # Linux uses Button-4 (scroll up) and Button-5 (scroll down)
+        self.canvas.bind("<Button-4>", self._on_mousewheel)
+        self.canvas.bind("<Button-5>", self._on_mousewheel)
+
         save_button = ttk.Button(self, text="Save Order", command=self.on_save)
         save_button.pack(pady=5)
+
+    def _on_mousewheel(self, event):
+        # Windows: event.delta is a multiple of 120
+        if event.num == 4 or event.delta > 0:
+            self.canvas.yview_scroll(-1, "units")
+        elif event.num == 5 or event.delta < 0:
+            self.canvas.yview_scroll(1, "units")
 
     def load_thumbnails(self):
         try:
@@ -102,9 +115,13 @@ class DragDropReorder(tk.Toplevel):
             self.destroy()
             return
         y = self.margin
+        # Use full available width minus margins
+        desired_width = self.canvas_width - 2 * self.margin
         for i in range(len(doc)):
             page = doc.load_page(i)
-            zoom = self.thumb_height / page.rect.height
+            # Compute zoom factor so that page width equals desired_width
+            zoom = desired_width / page.rect.width
+            thumb_height = page.rect.height * zoom
             mat = fitz.Matrix(zoom, zoom)
             pix = page.get_pixmap(matrix=mat)
             mode = "RGB" if pix.alpha == 0 else "RGBA"
@@ -113,48 +130,58 @@ class DragDropReorder(tk.Toplevel):
             self.thumbs.append(photo)
             self.page_order.append(i)
             # Center the image horizontally on the canvas
-            x = (self.canvas_width - pix.width) / 2
+            x = self.margin  # image width == desired_width
             item = self.canvas.create_image(x, y, anchor="nw", image=photo)
-            # Center the page label below the image
-            self.canvas.create_text(self.canvas_width/2, y + self.thumb_height + 2, anchor="n", text=f"Page {i+1}")
-            self.items.append(item)
-            y += self.thumb_height + self.margin * 2
+            # Center label below the image
+            self.canvas.create_text(self.canvas_width/2, y + thumb_height + 2, anchor="n", text=f"Page {i+1}")
+            self.items.append((item, pix.width, thumb_height))
+            y += thumb_height + self.margin * 2
         self.canvas.config(scrollregion=self.canvas.bbox("all"))
 
     def on_start_drag(self, event):
-        item = self.canvas.find_closest(event.x, event.y)[0]
-        if item in self.items:
-            self.drag_data["item"] = item
-            self.drag_data["y"] = event.y
-            self.drag_data["index"] = self.items.index(item)
+        x = self.canvas.canvasx(event.x)
+        y = self.canvas.canvasy(event.y)
+        item = self.canvas.find_closest(x, y)[0]
+        for idx, (itm, w, h) in enumerate(self.items):
+            if itm == item:
+                self.drag_data["item"] = idx  # store index
+                self.drag_data["y"] = y
+                break
 
     def on_drag(self, event):
-        if self.drag_data["item"]:
-            dy = event.y - self.drag_data["y"]
-            self.canvas.move(self.drag_data["item"], 0, dy)
-            self.drag_data["y"] = event.y
+        if self.drag_data["item"] is None:
+            return
+        new_y = self.canvas.canvasy(event.y)
+        dy = new_y - self.drag_data["y"]
+        idx = self.drag_data["item"]
+        item, w, h = self.items[idx]
+        self.canvas.move(item, 0, dy)
+        self.drag_data["y"] = new_y
 
     def on_drop(self, event):
         if self.drag_data["item"] is None:
             return
-        coords = self.canvas.coords(self.drag_data["item"])
-        new_y = coords[1]
-        new_index = int((new_y - self.margin + self.thumb_height/2) // (self.thumb_height + self.margin*2))
-        new_index = max(0, min(new_index, len(self.items)-1))
-        old_index = self.drag_data["index"]
-        if new_index != old_index:
-            item = self.items.pop(old_index)
-            self.items.insert(new_index, item)
-            page = self.page_order.pop(old_index)
-            self.page_order.insert(new_index, page)
-            self.redraw_items()
+        # Get current y-coordinates and sort items
+        positions = []
+        for idx, (item, w, h) in enumerate(self.items):
+            pos = self.canvas.coords(item)[1]
+            positions.append((idx, pos))
+        positions.sort(key=lambda x: x[1])
+        new_order = [self.page_order[idx] for idx, pos in positions]
+        self.items = [self.items[idx] for idx, pos in positions]
+        self.page_order = new_order
+        self.redraw_items()
         self.drag_data = {"item": None, "y": 0, "index": None}
 
     def redraw_items(self):
         y = self.margin
-        for item in self.items:
-            self.canvas.coords(item, (self.canvas_width - self.canvas.bbox(item)[2] + self.canvas.bbox(item)[0]) / 2, y)
-            y += self.thumb_height + self.margin*2
+        new_items = []
+        for (item, w, h) in self.items:
+            new_x = (self.canvas_width - w) / 2
+            self.canvas.coords(item, new_x, y)
+            y += h + self.margin * 2
+            new_items.append((item, w, h))
+        self.items = new_items
 
     def on_save(self):
         self.save_callback(self.page_order)
