@@ -13,7 +13,7 @@ The PDF Editor Application allows users to perform various operations on PDF fil
 
 ## Download
 
-You can download the Windows exe file [here](https://github.com/noureddine-t/PDF_file_editor/releases/download/1.0/PDF-Editor.exe)
+You can download the Windows exe file [here](https://github.com/Noureddine-t/PDF_file_editor/releases/tag/v1.0.0)
 
 ## Requirements
 
