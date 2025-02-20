@@ -2,6 +2,8 @@ import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from pypdf import PdfReader, PdfWriter
+import fitz  # PyMuPDF
+from PIL import Image, ImageTk
 
 
 # --- Helper Functions ---
@@ -41,13 +43,10 @@ def add_page(original_pdf, page_to_add, position, output):
     reader_orig = PdfReader(original_pdf)
     reader_new = PdfReader(page_to_add)
     writer = PdfWriter()
-    # Add pages before the insertion point
     for i in range(position):
         writer.add_page(reader_orig.pages[i])
-    # Insert new page(s)
     for page in reader_new.pages:
         writer.add_page(page)
-    # Append remaining pages
     for i in range(position, len(reader_orig.pages)):
         writer.add_page(reader_orig.pages[i])
     with open(output, "wb") as f:
@@ -57,10 +56,109 @@ def add_page(original_pdf, page_to_add, position, output):
 def reorder_pdf(pdf_file, new_order, output):
     reader = PdfReader(pdf_file)
     writer = PdfWriter()
-    for index in new_order:
-        writer.add_page(reader.pages[index])
+    for idx in new_order:
+        writer.add_page(reader.pages[idx])
     with open(output, "wb") as f:
         writer.write(f)
+
+
+# --- Drag & Drop Reorder Window using Thumbnails ---
+class DragDropReorder(tk.Toplevel):
+    def __init__(self, parent, pdf_file, save_callback):
+        tk.Toplevel.__init__(self, parent)
+        self.title("Reorder Pages")
+        self.geometry("320x500")
+        self.save_callback = save_callback
+        self.pdf_file = pdf_file
+        self.thumbs = []      # to keep PhotoImage references
+        self.page_order = []  # original page indices
+        self.items = []       # list of canvas image item IDs
+        self.thumb_height = 200  # increased thumbnail height
+        self.margin = 10
+        self.canvas_width = 300  # fixed canvas width
+
+        # Create canvas with scrollbar and fixed width
+        self.canvas = tk.Canvas(self, width=self.canvas_width, bg="white")
+        vsb = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        self.canvas.pack(side="left", fill="both", expand=True)
+
+        self.load_thumbnails()
+        self.drag_data = {"item": None, "y": 0, "index": None}
+
+        self.canvas.bind("<ButtonPress-1>", self.on_start_drag)
+        self.canvas.bind("<B1-Motion>", self.on_drag)
+        self.canvas.bind("<ButtonRelease-1>", self.on_drop)
+
+        save_button = ttk.Button(self, text="Save Order", command=self.on_save)
+        save_button.pack(pady=5)
+
+    def load_thumbnails(self):
+        try:
+            doc = fitz.open(self.pdf_file)
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not open PDF: {e}")
+            self.destroy()
+            return
+        y = self.margin
+        for i in range(len(doc)):
+            page = doc.load_page(i)
+            zoom = self.thumb_height / page.rect.height
+            mat = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(matrix=mat)
+            mode = "RGB" if pix.alpha == 0 else "RGBA"
+            img = Image.frombytes(mode, [pix.width, pix.height], pix.samples)
+            photo = ImageTk.PhotoImage(img)
+            self.thumbs.append(photo)
+            self.page_order.append(i)
+            # Center the image horizontally on the canvas
+            x = (self.canvas_width - pix.width) / 2
+            item = self.canvas.create_image(x, y, anchor="nw", image=photo)
+            # Center the page label below the image
+            self.canvas.create_text(self.canvas_width/2, y + self.thumb_height + 2, anchor="n", text=f"Page {i+1}")
+            self.items.append(item)
+            y += self.thumb_height + self.margin * 2
+        self.canvas.config(scrollregion=self.canvas.bbox("all"))
+
+    def on_start_drag(self, event):
+        item = self.canvas.find_closest(event.x, event.y)[0]
+        if item in self.items:
+            self.drag_data["item"] = item
+            self.drag_data["y"] = event.y
+            self.drag_data["index"] = self.items.index(item)
+
+    def on_drag(self, event):
+        if self.drag_data["item"]:
+            dy = event.y - self.drag_data["y"]
+            self.canvas.move(self.drag_data["item"], 0, dy)
+            self.drag_data["y"] = event.y
+
+    def on_drop(self, event):
+        if self.drag_data["item"] is None:
+            return
+        coords = self.canvas.coords(self.drag_data["item"])
+        new_y = coords[1]
+        new_index = int((new_y - self.margin + self.thumb_height/2) // (self.thumb_height + self.margin*2))
+        new_index = max(0, min(new_index, len(self.items)-1))
+        old_index = self.drag_data["index"]
+        if new_index != old_index:
+            item = self.items.pop(old_index)
+            self.items.insert(new_index, item)
+            page = self.page_order.pop(old_index)
+            self.page_order.insert(new_index, page)
+            self.redraw_items()
+        self.drag_data = {"item": None, "y": 0, "index": None}
+
+    def redraw_items(self):
+        y = self.margin
+        for item in self.items:
+            self.canvas.coords(item, (self.canvas_width - self.canvas.bbox(item)[2] + self.canvas.bbox(item)[0]) / 2, y)
+            y += self.thumb_height + self.margin*2
+
+    def on_save(self):
+        self.save_callback(self.page_order)
+        self.destroy()
 
 
 # --- GUI Application using Tkinter ---
@@ -155,26 +253,25 @@ class PDFEditorApp:
         ttk.Button(add_frame, text="Add Page", command=self.add_action).grid(row=5, column=1, pady=10)
 
     def create_reorganize_tab(self):
-        reorganize_frame = ttk.Frame(self.notebook)
-        self.notebook.add(reorganize_frame, text="Reorganize PDF")
+        reorg_frame = ttk.Frame(self.notebook)
+        self.notebook.add(reorg_frame, text="Reorganize PDF")
 
-        ttk.Label(reorganize_frame, text="Select PDF file:").grid(row=0, column=0, sticky='w', padx=5, pady=5)
-        self.reorg_file_entry = ttk.Entry(reorganize_frame, width=50)
+        ttk.Label(reorg_frame, text="Select PDF file:").grid(row=0, column=0, sticky='w', padx=5, pady=5)
+        self.reorg_file_entry = ttk.Entry(reorg_frame, width=50)
         self.reorg_file_entry.grid(row=0, column=1, padx=5, pady=5)
-        ttk.Button(reorganize_frame, text="Browse", command=self.browse_reorg_file).grid(row=0, column=2, padx=5,
-                                                                                         pady=5)
+        ttk.Button(reorg_frame, text="Browse", command=self.browse_reorg_file).grid(row=0, column=2, padx=5, pady=5)
 
-        ttk.Label(reorganize_frame, text="Output Directory:").grid(row=1, column=0, sticky='w', padx=5, pady=5)
-        self.reorg_output_dir_entry = ttk.Entry(reorganize_frame, width=50)
+        ttk.Label(reorg_frame, text="Output Directory:").grid(row=1, column=0, sticky='w', padx=5, pady=5)
+        self.reorg_output_dir_entry = ttk.Entry(reorg_frame, width=50)
         self.reorg_output_dir_entry.grid(row=1, column=1, padx=5, pady=5)
-        ttk.Button(reorganize_frame, text="Browse Dir", command=self.browse_reorg_output_dir).grid(row=1, column=2,
-                                                                                                   padx=5, pady=5)
+        ttk.Button(reorg_frame, text="Browse Dir", command=self.browse_reorg_output_dir).grid(row=1, column=2, padx=5,
+                                                                                              pady=5)
 
-        ttk.Label(reorganize_frame, text="Filename:").grid(row=2, column=0, sticky='w', padx=5, pady=5)
-        self.reorg_filename_entry = ttk.Entry(reorganize_frame, width=50)
+        ttk.Label(reorg_frame, text="Filename:").grid(row=2, column=0, sticky='w', padx=5, pady=5)
+        self.reorg_filename_entry = ttk.Entry(reorg_frame, width=50)
         self.reorg_filename_entry.grid(row=2, column=1, padx=5, pady=5)
 
-        ttk.Button(reorganize_frame, text="Reorganize", command=self.reorganize_action).grid(row=3, column=1, pady=10)
+        ttk.Button(reorg_frame, text="Reorganize", command=self.reorganize_action).grid(row=3, column=1, pady=10)
 
     # --- File/Directory Dialog Methods ---
     def browse_merge_files(self):
@@ -287,91 +384,17 @@ class PDFEditorApp:
         if not pdf_file or not out_dir or not filename:
             messagebox.showerror("Error", "Please specify the PDF file, output directory, and filename.")
             return
-        # Open pop-up window for reordering
-        try:
-            reader = PdfReader(pdf_file)
-            num_pages = len(reader.pages)
-        except Exception as e:
-            messagebox.showerror("Error", f"Could not read PDF: {e}")
-            return
 
-        reorder_win = tk.Toplevel(self.root)
-        reorder_win.title("Reorder Pages")
-        reorder_win.geometry("300x400")
-
-        ttk.Label(reorder_win, text="Drag to reorder pages using buttons:").pack(pady=5)
-
-        # Create a Listbox with scrollbar
-        listbox_frame = ttk.Frame(reorder_win)
-        listbox_frame.pack(fill='both', expand=True, padx=5, pady=5)
-        scrollbar = ttk.Scrollbar(listbox_frame, orient="vertical")
-        self.page_listbox = tk.Listbox(listbox_frame, yscrollcommand=scrollbar.set, selectmode=tk.SINGLE)
-        scrollbar.config(command=self.page_listbox.yview)
-        scrollbar.pack(side="right", fill="y")
-        self.page_listbox.pack(side="left", fill="both", expand=True)
-
-        # Populate listbox with page labels (store indices as values)
-        for i in range(num_pages):
-            self.page_listbox.insert(tk.END, f"Page {i + 1}")
-
-        # Buttons for moving items up and down
-        btn_frame = ttk.Frame(reorder_win)
-        btn_frame.pack(pady=5)
-        ttk.Button(btn_frame, text="Move Up", command=self.move_up).grid(row=0, column=0, padx=5)
-        ttk.Button(btn_frame, text="Move Down", command=self.move_down).grid(row=0, column=1, padx=5)
-
-        # Save and Cancel buttons
-        action_frame = ttk.Frame(reorder_win)
-        action_frame.pack(pady=10)
-        ttk.Button(action_frame, text="Save Order",
-                   command=lambda: self.save_reorder(pdf_file, out_dir, filename, reorder_win)).grid(row=0, column=0,
-                                                                                                     padx=5)
-        ttk.Button(action_frame, text="Cancel", command=reorder_win.destroy).grid(row=0, column=1, padx=5)
-
-    def move_up(self):
-        selection = self.page_listbox.curselection()
-        if not selection:
-            return
-        index = selection[0]
-        if index == 0:
-            return
-        text = self.page_listbox.get(index)
-        self.page_listbox.delete(index)
-        self.page_listbox.insert(index - 1, text)
-        self.page_listbox.selection_set(index - 1)
-
-    def move_down(self):
-        selection = self.page_listbox.curselection()
-        if not selection:
-            return
-        index = selection[0]
-        if index == self.page_listbox.size() - 1:
-            return
-        text = self.page_listbox.get(index)
-        self.page_listbox.delete(index)
-        self.page_listbox.insert(index + 1, text)
-        self.page_listbox.selection_set(index + 1)
-
-    def save_reorder(self, pdf_file, out_dir, filename, window):
-        # Retrieve new order from listbox (the order of pages corresponds to their new index)
-        new_order = []
-        for i in range(self.page_listbox.size()):
-            # The displayed text is "Page X", so subtract 1 to get the 0-indexed page number
-            item = self.page_listbox.get(i)
+        def save_order_callback(new_order):
+            output = build_output_path(out_dir, filename)
             try:
-                page_num = int(item.split()[1]) - 1
-                new_order.append(page_num)
-            except Exception:
-                messagebox.showerror("Error", "Invalid page label encountered.")
-                return
-        output = build_output_path(out_dir, filename)
-        try:
-            reorder_pdf(pdf_file, new_order, output)
-            messagebox.showinfo("Success", f"PDF reorganized successfully!\nSaved as:\n{output}")
-            window.destroy()
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-            window.destroy()
+                reorder_pdf(pdf_file, new_order, output)
+                messagebox.showinfo("Success", f"PDF reorganized successfully!\nSaved as:\n{output}")
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
+        # Open the drag-and-drop reorder window that shows thumbnails
+        DragDropReorder(self.root, pdf_file, save_order_callback)
 
 
 # --- Main ---
