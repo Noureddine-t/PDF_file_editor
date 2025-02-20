@@ -1,13 +1,19 @@
+import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from pypdf import PdfReader, PdfWriter
 
 
-# --- Helper Function ---
+# --- Helper Functions ---
 def ensure_pdf_extension(filename):
     if not filename.lower().endswith('.pdf'):
         return filename + '.pdf'
     return filename
+
+
+def build_output_path(directory, filename):
+    full = os.path.join(directory, filename)
+    return ensure_pdf_extension(full)
 
 
 # --- Backend Functions ---
@@ -69,12 +75,17 @@ class PDFEditorApp:
         self.merge_files_entry.grid(row=0, column=1, padx=5, pady=5)
         ttk.Button(merge_frame, text="Browse", command=self.browse_merge_files).grid(row=0, column=2, padx=5, pady=5)
 
-        ttk.Label(merge_frame, text="Output file:").grid(row=1, column=0, sticky='w', padx=5, pady=5)
-        self.merge_output_entry = ttk.Entry(merge_frame, width=50)
-        self.merge_output_entry.grid(row=1, column=1, padx=5, pady=5)
-        ttk.Button(merge_frame, text="Save As", command=self.save_merge_output).grid(row=1, column=2, padx=5, pady=5)
+        ttk.Label(merge_frame, text="Output Directory:").grid(row=1, column=0, sticky='w', padx=5, pady=5)
+        self.merge_output_dir_entry = ttk.Entry(merge_frame, width=50)
+        self.merge_output_dir_entry.grid(row=1, column=1, padx=5, pady=5)
+        ttk.Button(merge_frame, text="Browse Dir", command=self.browse_merge_output_dir).grid(row=1, column=2, padx=5,
+                                                                                              pady=5)
 
-        ttk.Button(merge_frame, text="Merge", command=self.merge_action).grid(row=2, column=1, pady=10)
+        ttk.Label(merge_frame, text="Filename:").grid(row=2, column=0, sticky='w', padx=5, pady=5)
+        self.merge_filename_entry = ttk.Entry(merge_frame, width=50)
+        self.merge_filename_entry.grid(row=2, column=1, padx=5, pady=5)
+
+        ttk.Button(merge_frame, text="Merge", command=self.merge_action).grid(row=3, column=1, pady=10)
 
     def create_delete_tab(self):
         delete_frame = ttk.Frame(self.notebook)
@@ -90,12 +101,17 @@ class PDFEditorApp:
         self.delete_pages_entry = ttk.Entry(delete_frame, width=50)
         self.delete_pages_entry.grid(row=1, column=1, padx=5, pady=5)
 
-        ttk.Label(delete_frame, text="Output file:").grid(row=2, column=0, sticky='w', padx=5, pady=5)
-        self.delete_output_entry = ttk.Entry(delete_frame, width=50)
-        self.delete_output_entry.grid(row=2, column=1, padx=5, pady=5)
-        ttk.Button(delete_frame, text="Save As", command=self.save_delete_output).grid(row=2, column=2, padx=5, pady=5)
+        ttk.Label(delete_frame, text="Output Directory:").grid(row=2, column=0, sticky='w', padx=5, pady=5)
+        self.delete_output_dir_entry = ttk.Entry(delete_frame, width=50)
+        self.delete_output_dir_entry.grid(row=2, column=1, padx=5, pady=5)
+        ttk.Button(delete_frame, text="Browse Dir", command=self.browse_delete_output_dir).grid(row=2, column=2, padx=5,
+                                                                                                pady=5)
 
-        ttk.Button(delete_frame, text="Delete Pages", command=self.delete_action).grid(row=3, column=1, pady=10)
+        ttk.Label(delete_frame, text="Filename:").grid(row=3, column=0, sticky='w', padx=5, pady=5)
+        self.delete_filename_entry = ttk.Entry(delete_frame, width=50)
+        self.delete_filename_entry.grid(row=3, column=1, padx=5, pady=5)
+
+        ttk.Button(delete_frame, text="Delete Pages", command=self.delete_action).grid(row=4, column=1, pady=10)
 
     def create_add_tab(self):
         add_frame = ttk.Frame(self.notebook)
@@ -116,26 +132,30 @@ class PDFEditorApp:
         self.add_position_entry = ttk.Entry(add_frame, width=50)
         self.add_position_entry.grid(row=2, column=1, padx=5, pady=5)
 
-        ttk.Label(add_frame, text="Output file:").grid(row=3, column=0, sticky='w', padx=5, pady=5)
-        self.add_output_entry = ttk.Entry(add_frame, width=50)
-        self.add_output_entry.grid(row=3, column=1, padx=5, pady=5)
-        ttk.Button(add_frame, text="Save As", command=self.save_add_output).grid(row=3, column=2, padx=5, pady=5)
+        ttk.Label(add_frame, text="Output Directory:").grid(row=3, column=0, sticky='w', padx=5, pady=5)
+        self.add_output_dir_entry = ttk.Entry(add_frame, width=50)
+        self.add_output_dir_entry.grid(row=3, column=1, padx=5, pady=5)
+        ttk.Button(add_frame, text="Browse Dir", command=self.browse_add_output_dir).grid(row=3, column=2, padx=5,
+                                                                                          pady=5)
 
-        ttk.Button(add_frame, text="Add Page", command=self.add_action).grid(row=4, column=1, pady=10)
+        ttk.Label(add_frame, text="Filename:").grid(row=4, column=0, sticky='w', padx=5, pady=5)
+        self.add_filename_entry = ttk.Entry(add_frame, width=50)
+        self.add_filename_entry.grid(row=4, column=1, padx=5, pady=5)
 
-    # --- File Dialog Methods ---
+        ttk.Button(add_frame, text="Add Page", command=self.add_action).grid(row=5, column=1, pady=10)
+
+    # --- File/Directory Dialog Methods ---
     def browse_merge_files(self):
         files = filedialog.askopenfilenames(title="Select PDF files", filetypes=[("PDF Files", "*.pdf")])
         if files:
             self.merge_files_entry.delete(0, tk.END)
             self.merge_files_entry.insert(0, ";".join(files))
 
-    def save_merge_output(self):
-        file = filedialog.asksaveasfilename(title="Save Merged PDF", defaultextension=".pdf",
-                                            filetypes=[("PDF Files", "*.pdf")])
-        if file:
-            self.merge_output_entry.delete(0, tk.END)
-            self.merge_output_entry.insert(0, file)
+    def browse_merge_output_dir(self):
+        directory = filedialog.askdirectory(title="Select output directory")
+        if directory:
+            self.merge_output_dir_entry.delete(0, tk.END)
+            self.merge_output_dir_entry.insert(0, directory)
 
     def browse_delete_file(self):
         file = filedialog.askopenfilename(title="Select PDF file", filetypes=[("PDF Files", "*.pdf")])
@@ -143,12 +163,11 @@ class PDFEditorApp:
             self.delete_file_entry.delete(0, tk.END)
             self.delete_file_entry.insert(0, file)
 
-    def save_delete_output(self):
-        file = filedialog.asksaveasfilename(title="Save PDF", defaultextension=".pdf",
-                                            filetypes=[("PDF Files", "*.pdf")])
-        if file:
-            self.delete_output_entry.delete(0, tk.END)
-            self.delete_output_entry.insert(0, file)
+    def browse_delete_output_dir(self):
+        directory = filedialog.askdirectory(title="Select output directory")
+        if directory:
+            self.delete_output_dir_entry.delete(0, tk.END)
+            self.delete_output_dir_entry.insert(0, directory)
 
     def browse_add_original(self):
         file = filedialog.askopenfilename(title="Select original PDF", filetypes=[("PDF Files", "*.pdf")])
@@ -162,53 +181,58 @@ class PDFEditorApp:
             self.add_page_entry.delete(0, tk.END)
             self.add_page_entry.insert(0, file)
 
-    def save_add_output(self):
-        file = filedialog.asksaveasfilename(title="Save PDF", defaultextension=".pdf",
-                                            filetypes=[("PDF Files", "*.pdf")])
-        if file:
-            self.add_output_entry.delete(0, tk.END)
-            self.add_output_entry.insert(0, file)
+    def browse_add_output_dir(self):
+        directory = filedialog.askdirectory(title="Select output directory")
+        if directory:
+            self.add_output_dir_entry.delete(0, tk.END)
+            self.add_output_dir_entry.insert(0, directory)
 
     # --- Action Methods ---
     def merge_action(self):
         files_str = self.merge_files_entry.get()
-        output = ensure_pdf_extension(self.merge_output_entry.get())
-        if not files_str or not output:
-            messagebox.showerror("Error", "Please specify input files and output file.")
+        out_dir = self.merge_output_dir_entry.get()
+        filename = self.merge_filename_entry.get()
+        if not files_str or not out_dir or not filename:
+            messagebox.showerror("Error", "Please specify input files, output directory, and filename.")
             return
+        output = build_output_path(out_dir, filename)
         pdf_list = files_str.split(";")
         try:
             merge_pdfs(pdf_list, output)
-            messagebox.showinfo("Success", "PDFs merged successfully!")
+            messagebox.showinfo("Success", f"PDFs merged successfully!\nSaved as:\n{output}")
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
     def delete_action(self):
         pdf_file = self.delete_file_entry.get()
-        output = ensure_pdf_extension(self.delete_output_entry.get())
+        out_dir = self.delete_output_dir_entry.get()
+        filename = self.delete_filename_entry.get()
         pages_str = self.delete_pages_entry.get()
-        if not pdf_file or not output or not pages_str:
+        if not pdf_file or not out_dir or not filename or not pages_str:
             messagebox.showerror("Error", "Please specify all fields.")
             return
+        output = build_output_path(out_dir, filename)
         try:
             pages_to_delete = [int(x.strip()) for x in pages_str.split(",") if x.strip().isdigit()]
             delete_pages(pdf_file, pages_to_delete, output)
-            messagebox.showinfo("Success", "Pages deleted successfully!")
+            messagebox.showinfo("Success", f"Pages deleted successfully!\nSaved as:\n{output}")
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
     def add_action(self):
         original = self.add_original_entry.get()
         add_file = self.add_page_entry.get()
-        output = ensure_pdf_extension(self.add_output_entry.get())
+        out_dir = self.add_output_dir_entry.get()
+        filename = self.add_filename_entry.get()
         pos_str = self.add_position_entry.get()
-        if not original or not add_file or not output or not pos_str:
+        if not original or not add_file or not out_dir or not filename or not pos_str:
             messagebox.showerror("Error", "Please specify all fields.")
             return
+        output = build_output_path(out_dir, filename)
         try:
             position = int(pos_str)
             add_page(original, add_file, position, output)
-            messagebox.showinfo("Success", "Page(s) added successfully!")
+            messagebox.showinfo("Success", f"Page(s) added successfully!\nSaved as:\n{output}")
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
