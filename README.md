@@ -13,7 +13,8 @@ The PDF Editor Application allows users to perform various operations on PDF fil
 
 ## Download
 
-You can download the Windows exe file [here](https://github.com/Noureddine-t/PDF_file_editor/releases/tag/v1.0.0)
+You can download the Windows exe file [here](https://github.com/Noureddine-t/PDF_file_editor/releases/tag/v1.0.0pyinstaller --onefile --noconsole --distpath dist --workpath build --specpath . main.py
+)
 
 ## Requirements
 
