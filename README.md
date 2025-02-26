@@ -4,6 +4,8 @@
 
 The PDF Editor Application allows users to perform various operations on PDF files, such as merging multiple PDFs, deleting pages, adding pages, and reordering pages. The app also provides a graphical user interface (GUI) using Tkinter for ease of use, with drag-and-drop functionality for reordering pages and previewing thumbnails.
 
+![App preview](./img/app_preview.png)
+
 ## Features
 
 - **Merge PDFs**: Merge multiple PDF files into one document.
@@ -13,8 +15,7 @@ The PDF Editor Application allows users to perform various operations on PDF fil
 
 ## Download
 
-You can download the Windows exe file [here](https://github.com/Noureddine-t/PDF_file_editor/releases/tag/v1.0.0pyinstaller --onefile --noconsole --distpath dist --workpath build --specpath . main.py
-)
+You can download the Windows exe file [here](https://github.com/Noureddine-t/PDF_file_editor/releases/edit/v1.0.0)
 
 ## Requirements
 
