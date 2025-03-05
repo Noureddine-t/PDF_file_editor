@@ -1,5 +1,7 @@
 # PDF Editor Application
 
+[![python](https://img.shields.io/badge/PYTHON-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+
 ## Description
 
 The PDF Editor Application allows users to perform various operations on PDF files, such as merging multiple PDFs, deleting pages, adding pages, and reordering pages. The app also provides a graphical user interface (GUI) using Tkinter for ease of use, with drag-and-drop functionality for reordering pages and previewing thumbnails.
